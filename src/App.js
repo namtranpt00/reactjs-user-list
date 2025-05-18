@@ -84,7 +84,7 @@ function UserList() {
 
     if (newUser.avatar) {
       const presignRes = await axios.get(
-        "http://localhost:3001/generate-presigned-url",
+        `${process.env.REACT_APP_API_URL}/generate-presigned-url`,
         {
           params: {
             filename: newUser.avatar.name,
