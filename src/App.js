@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import "./App.css"; // Import custom CSS file
+import "./App.css";
 
 function UserList() {
   const [users, setUsers] = useState([]);
@@ -12,8 +12,9 @@ function UserList() {
     firstName: "",
     age: "",
     companyId: "",
-    avatar: "",
+    avatar: null, // Store the File object here
   });
+  const [avatarPreview, setAvatarPreview] = useState(null); // For image preview
   const [deleteConfirmationId, setDeleteConfirmationId] = useState(null);
 
   useEffect(() => {
@@ -48,7 +49,8 @@ function UserList() {
 
   const handleCloseAddUserModal = () => {
     setIsAddingUser(false);
-    setNewUser({ firstName: "", age: "", companyId: "", avatar: "" });
+    setNewUser({ firstName: "", age: "", companyId: "", avatar: null });
+    setAvatarPreview(null);
   };
 
   const handleInputChange = (e) => {
@@ -59,16 +61,63 @@ function UserList() {
     }));
   };
 
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setNewUser((prevUser) => ({ ...prevUser, avatar: file }));
+      // For preview:
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setNewUser((prevUser) => ({ ...prevUser, avatar: null }));
+      setAvatarPreview(null);
+    }
+  };
+
   const handleAddUserSubmit = async (e) => {
     e.preventDefault();
+
+    let avatarUrl = null;
+
+    if (newUser.avatar) {
+      const presignRes = await axios.get(
+        "http://localhost:3001/generate-presigned-url",
+        {
+          params: {
+            filename: newUser.avatar.name,
+            filetype: newUser.avatar.type,
+          },
+        }
+      );
+
+      await axios.put(presignRes.data.uploadUrl, newUser.avatar, {
+        headers: {
+          "Content-Type": newUser.avatar.type,
+        },
+      });
+
+      avatarUrl = presignRes.data.fileUrl;
+    }
+
+    const newUserPayload = {
+      firstName: newUser.firstName,
+      age: newUser.age,
+      companyId: newUser.companyId,
+      avatar: avatarUrl,
+    };
+
     try {
       const response = await axios.post(
         "https://66a39c4e44aa63704581e216.mockapi.io/api/v1/users",
-        newUser
+        newUserPayload
       );
       setUsers((prevUsers) => [...prevUsers, response.data]);
       setIsAddingUser(false);
-      setNewUser({ firstName: "", age: "", companyId: "", avatar: "" });
+      setNewUser({ firstName: "", age: "", companyId: "", avatar: null });
+      setAvatarPreview(null);
     } catch (err) {
       console.error("Error adding user:", err);
     }
@@ -113,12 +162,19 @@ function UserList() {
           <li
             key={user.id}
             className="user-card"
-            onClick={() => handleUserClick(user)} // Re-add onClick to the li
-            style={{ cursor: "pointer" }} // Ensure cursor indicates click
+            onClick={() => handleUserClick(user)}
+            style={{ cursor: "pointer" }}
           >
             <div className="user-info-left">
               <div className="user-avatar">
-                <img src={user.avatar} alt={`${user.firstName}'s Avatar`} />
+                <img
+                  src={user.avatar}
+                  alt={`${user.firstName}'s Avatar`}
+                  onError={(e) => {
+                    e.target.onerror = null; // Prevent infinite loop
+                    e.target.src = "URL_TO_DEFAULT_AVATAR"; // Replace with a default avatar URL
+                  }}
+                />
               </div>
               <div>
                 <h2>{user.firstName}</h2>
@@ -128,7 +184,7 @@ function UserList() {
             <button
               className="delete-button"
               onClick={(e) => {
-                e.stopPropagation(); // Prevent row click when delete is clicked
+                e.stopPropagation();
                 handleDeleteClick(user.id);
               }}
             >
@@ -150,6 +206,10 @@ function UserList() {
                 src={selectedUser.avatar}
                 alt={`${selectedUser.firstName}'s Avatar`}
                 className="modal-avatar"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "URL_TO_DEFAULT_AVATAR";
+                }}
               />
               <p>ID: {selectedUser.id}</p>
               <p>Age: {selectedUser.age}</p>
@@ -200,14 +260,23 @@ function UserList() {
                 />
               </div>
               <div>
-                <label htmlFor="avatar">Avatar URL:</label>
+                <label htmlFor="avatar">Avatar:</label>
                 <input
-                  type="text"
+                  type="file"
                   id="avatar"
                   name="avatar"
-                  value={newUser.avatar}
-                  onChange={handleInputChange}
+                  onChange={handleAvatarChange}
+                  accept="image/*" // Optional: Accept only image files
                 />
+                {avatarPreview && (
+                  <div className="avatar-preview">
+                    <img
+                      src={avatarPreview}
+                      alt="Avatar Preview"
+                      style={{ maxWidth: "100px", maxHeight: "100px" }}
+                    />
+                  </div>
+                )}
               </div>
               <button type="submit">Add User</button>
             </form>
